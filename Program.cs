@@ -5,113 +5,80 @@ using System.Linq;
 
 namespace GeneticSearch
 {
+    class Protein
+    {
+        public string Name { get; set; }
+        public string Organism { get; set; }
+        public string Sequence { get; set; }
+    }
+
+    class Command
+    {
+        public string Type { get; set; }
+        public string Target1 { get; set; }
+        public string Target2 { get; set; }
+    }
+
     class Program
     {
-        struct Protein
-        {
-            public string Name;
-            public string Organism;
-            public string AminoAcids;
-        }
-
-
-        struct Command
-        {
-            public string Name;
-            public string Parameter1;
-            public string Parameter2;
-        }
-
         static void Main(string[] args)
         {
-            string sequencesFile = "sequences.0.txt";
-            string commandsFile = "commands.0.txt";
-            string outputFile = "genedata.txt";
+            if (args.Length < 2)
+            {
+                Console.WriteLine("Usage: dotnet run <commands_file> <sequences_file> [output_file]");
+                return;
+            }
 
-            List<Protein> proteins = ReadSequences(sequencesFile);
+            string commandFile = args[0];
+            string sequenceFile = args[1];
+            string outputFile = args.Length > 2 ? args[2] : "genedata.txt";
 
-            List<Command> commands = ReadCommands(commandsFile);
+            List<Protein> proteins = LoadProteins(sequenceFile);
+            List<Command> commands = LoadCommands(commandFile);
 
             ExecuteCommands(proteins, commands, outputFile);
-
-            Console.WriteLine($"Обработка завершена! Результаты сохранены в файл {outputFile}.");
         }
 
-        static string Decoding(string aminoAcids)
+        static List<Protein> LoadProteins(string filepath)
         {
-            if (string.IsNullOrEmpty(aminoAcids))
-                return string.Empty;
+            var proteins = new List<Protein>();
+            if (!File.Exists(filepath)) return proteins;
 
-            string decoded = string.Empty;
-            for (int i = 0; i < aminoAcids.Length; i++)
-            {
-                char ch = aminoAcids[i];
-                if (char.IsDigit(ch))
-                {
-                    int count = ch - '0';
-                    char letter = aminoAcids[i + 1];
-                    for (int j = 0; j < count; j++)
-                    {
-                        decoded += letter;
-                    }
-                    i++;
-                }
-                else
-                {
-                    decoded += ch;
-                }
-            }
-            return decoded;
-        }
-
-        static List<Protein> ReadSequences(string filename)
-        {
-            List<Protein> list = new List<Protein>();
-            if (!File.Exists(filename)) return list;
-
-            string[] lines = File.ReadAllLines(filename);
+            string[] lines = File.ReadAllLines(filepath);
             foreach (var line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
-
                 string[] parts = line.Split('\t');
                 if (parts.Length >= 3)
                 {
-                    Protein p = new Protein
+                    proteins.Add(new Protein
                     {
                         Name = parts[0].Trim(),
                         Organism = parts[1].Trim(),
-                        AminoAcids = Decoding(parts[2].Trim())
-                    };
-                    list.Add(p);
+                        Sequence = parts[2].Trim()
+                    });
                 }
             }
-            return list;
+            return proteins;
         }
 
-        static List<Command> ReadCommands(string filename)
+        static List<Command> LoadCommands(string filepath)
         {
-            List<Command> commands = new List<Command>();
-            if (!File.Exists(filename)) return commands;
+            var commands = new List<Command>();
+            if (!File.Exists(filepath)) return commands;
 
-            string[] lines = File.ReadAllLines(filename);
+            string[] lines = File.ReadAllLines(filepath);
             foreach (var line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
-
                 string[] parts = line.Split('\t');
-                Command cmd = new Command();
-                cmd.Name = parts[0].Trim();
-
-                if (parts.Length > 1)
-                    cmd.Parameter1 = Decoding(parts[1].Trim());
-
-                if (parts.Length > 2)
-                    cmd.Parameter2 = Decoding(parts[2].Trim());
-                else
-                    cmd.Parameter2 = string.Empty;
-
-                commands.Add(cmd);
+                if (parts.Length > 0)
+                {
+                    var cmd = new Command { Type = parts[0].Trim() };
+                    if (parts.Length > 1) cmd.Target1 = parts[1].Trim();
+                    if (parts.Length > 2) cmd.Target2 = parts[2].Trim();
+                    commands.Add(cmd);
+                }
             }
             return commands;
         }
@@ -120,112 +87,91 @@ namespace GeneticSearch
         {
             using (StreamWriter writer = new StreamWriter(outputFile))
             {
-                // Заголовок выходного файла
                 writer.WriteLine("Dwight Barnette");
                 writer.WriteLine("Genetic Searching");
+                writer.WriteLine("--------------------------------------------------------------------------");
 
-                for (int i = 0; i < commands.Count; i++)
+                int index = 1;
+                foreach (var cmd in commands)
                 {
-                    writer.WriteLine("--------------------------------------------------------------------------");
+                    string header = $"{index:D3} {cmd.Type}";
+                    if (!string.IsNullOrEmpty(cmd.Target1)) header += $" {cmd.Target1}";
+                    if (!string.IsNullOrEmpty(cmd.Target2)) header += $" {cmd.Target2}";
+                    writer.WriteLine(header);
 
-                    string opNum = (i + 1).ToString("D3");
-                    Command cmd = commands[i];
-
-                    if (cmd.Name == "search")
+                    if (cmd.Type == "search")
                     {
-                        writer.WriteLine($"{opNum} {cmd.Name} {cmd.Parameter1}");
-                        writer.WriteLine("organism protein");
-
-                        bool found = false;
-                        foreach (var p in proteins)
+                        var match = proteins.FirstOrDefault(p => p.Sequence != null && p.Sequence.Contains(cmd.Target1));
+                        if (match != null)
                         {
-                            if (p.AminoAcids.Contains(cmd.Parameter1))
-                            {
-                                writer.WriteLine($"{p.Organism} {p.Name}");
-                                found = true;
-                            }
+                            writer.WriteLine("organism protein");
+                            writer.WriteLine($"{match.Organism} {match.Name}");
                         }
-
-                        if (!found)
+                        else
                         {
+                            writer.WriteLine("organism protein");
                             writer.WriteLine("NOT FOUND");
                         }
                     }
-                    else if (cmd.Name == "diff")
+                    else if (cmd.Type == "diff")
                     {
-                        writer.WriteLine($"{opNum} {cmd.Name} {cmd.Parameter1} {cmd.Parameter2}");
-                        writer.WriteLine("amino-acids difference:");
+                        var p1 = proteins.FirstOrDefault(p => p.Name != null && p.Name.Equals(cmd.Target1, StringComparison.OrdinalIgnoreCase));
+                        var p2 = proteins.FirstOrDefault(p => p.Name != null && p.Name.Equals(cmd.Target2, StringComparison.OrdinalIgnoreCase));
 
-                        Protein? p1 = proteins.FirstOrDefault(p => p.Name == cmd.Parameter1);
-                        Protein? p2 = proteins.FirstOrDefault(p => p.Name == cmd.Parameter2);
-
-
-                        if (!p1.HasValue || !p2.HasValue)
+                        if (p1 == null || p2 == null || p1.Sequence == null || p2.Sequence == null)
                         {
-                            writer.Write("MISSING:");
-                            if (!p1.HasValue) writer.Write($" {cmd.Parameter1}");
-                            if (!p2.HasValue) writer.Write($" {cmd.Parameter2}");
-                            writer.WriteLine();
+                            writer.WriteLine("NOT FOUND");
                         }
                         else
                         {
-                            int diffCount = CalculateDifference(p1.Value.AminoAcids, p2.Value.AminoAcids);
-                            writer.WriteLine(diffCount);
+                            int diff = CalculateDifference(p1.Sequence, p2.Sequence);
+                            writer.WriteLine("amino-acids difference:");
+                            writer.WriteLine(diff);
                         }
                     }
-                    else if (cmd.Name == "mode")
+                    else if (cmd.Type == "mode")
                     {
-                        writer.WriteLine($"{opNum} {cmd.Name} {cmd.Parameter1}");
-                        writer.WriteLine("amino-acid occurs:");
-
-                        Protein? p = proteins.FirstOrDefault(pr => pr.Name == cmd.Parameter1);
-                        if (!p.HasValue)
+                        var match = proteins.FirstOrDefault(p => p.Name != null && p.Name.Equals(cmd.Target1, StringComparison.OrdinalIgnoreCase));
+                        if (match == null || string.IsNullOrEmpty(match.Sequence))
                         {
-                            writer.WriteLine($"MISSING: {cmd.Parameter1}");
+                            writer.WriteLine("NOT FOUND");
                         }
                         else
                         {
-                            var (mostFrequentChar, count) = GetMostFrequentAminoAcid(p.Value.AminoAcids);
-                            writer.WriteLine($"{mostFrequentChar} {count}");
+                            var mostCommon = match.Sequence
+                                .GroupBy(c => c)
+                                .OrderByDescending(g => g.Count())
+                                .ThenBy(g => g.Key)
+                                .FirstOrDefault();
+
+                            writer.WriteLine("amino-acid occurs:");
+                            writer.WriteLine($"{mostCommon.Key} {mostCommon.Count()}");
                         }
                     }
+
+                    writer.WriteLine("--------------------------------------------------------------------------");
+                    index++;
                 }
             }
         }
 
-        static int CalculateDifference(string seq1, string seq2)
+        public static int CalculateDifference(string seq1, string seq2)
         {
-            int minLen = Math.Min(seq1.Length, seq2.Length);
-            int diff = 0;
+            if (seq1 == null || seq2 == null) return 0;
 
-            for (int i = 0; i < minLen; i++)
+            int diffCount = 0;
+            int minLength = Math.Min(seq1.Length, seq2.Length);
+
+            for (int i = 0; i < minLength; i++)
             {
                 if (seq1[i] != seq2[i])
-                    diff++;
+                {
+                    diffCount++;
+                }
             }
 
-            diff += Math.Abs(seq1.Length - seq2.Length);
-
-            return diff;
-        }
-
-        static (char AminoAcid, int Count) GetMostFrequentAminoAcid(string seq)
-        {
-            var counts = new Dictionary<char, int>();
-
-            foreach (char c in seq)
-            {
-                if (counts.ContainsKey(c))
-                    counts[c]++;
-                else
-                    counts[c] = 1;
-            }
-
-            var top = counts.OrderByDescending(kv => kv.Value)
-                              .ThenBy(kv => kv.Key)
-                              .First();
-
-            return (top.Key, top.Value);
+            diffCount += Math.Abs(seq1.Length - seq2.Length);
+            return diffCount;
         }
     }
 }
